@@ -112,6 +112,9 @@ class ElasticTrace : public ProbeListenerObject
     /** Register all listeners. */
     void regEtraceListeners();
 
+    void begin_listening();
+    void end_listening();
+
     /**
      * Process any outstanding trace records, flush them out to the protobuf
      * output streams and delete the streams at simulation exit.
@@ -183,6 +186,8 @@ class ElasticTrace : public ProbeListenerObject
     EventFunctionWrapper regEtraceListenersEvent;
 
   private:
+    bool manualStart;
+
     /**
      * Used for checking the first window for processing and writing of
      * dependency trace. At the start of the program there can be dependency-

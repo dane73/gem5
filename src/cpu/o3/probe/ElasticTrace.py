@@ -34,12 +34,18 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 from m5.objects.Probe import *
+from m5.util.pybind import *
 
 
 class ElasticTrace(ProbeListenerObject):
     type = "ElasticTrace"
     cxx_class = "gem5::o3::ElasticTrace"
     cxx_header = "cpu/o3/probe/elastic_trace.hh"
+
+    cxx_exports = [
+        PyBindMethod("begin_listening"),
+        PyBindMethod("end_listening"),
+    ]
 
     # Trace files for the following params are created in the output directory.
     # User is forced to provide these when an instance of this class is created.
@@ -63,6 +69,10 @@ class ElasticTrace(ProbeListenerObject):
         "after which to start tracing. Default "
         "zero means start tracing from first "
         "committed instruction.",
+    )
+    manual_start = Param.Bool(
+        False,
+        "Set true to beginn tracing at the start of the simulation. If set to False, use `startTraceInst` or `begin_listening` to start tracing during a point at the simulation.",
     )
     # Whether to trace virtual addresses for memory accesses
     traceVirtAddr = Param.Bool(

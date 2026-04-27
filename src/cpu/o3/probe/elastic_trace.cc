@@ -55,6 +55,7 @@ namespace o3
 ElasticTrace::ElasticTrace(const ElasticTraceParams &params)
     :  ProbeListenerObject(params),
        regEtraceListenersEvent([this]{ regEtraceListeners(); }, name()),
+       manualStart(params.manual_start),
        firstWin(true),
        lastClearedSeqNum(0),
        depWindowSize(params.depWindowSize),
@@ -104,8 +105,10 @@ ElasticTrace::ElasticTrace(const ElasticTraceParams &params)
 void
 ElasticTrace::regProbeListeners()
 {
+
     inform("@%llu: regProbeListeners() called, startTraceInst = %llu",
         curTick(), startTraceInst);
+    if (manualStart) return;
     if (startTraceInst == 0) {
         // If we want to start tracing from the start of the simulation,
         // register all elastic trace probes now.
@@ -116,6 +119,19 @@ ElasticTrace::regProbeListeners()
         cpu->getContext(0)->scheduleInstCountEvent(
                 &regEtraceListenersEvent, startTraceInst);
     }
+
+    return;
+}
+
+void
+ElasticTrace::begin_listening(){
+    regEtraceListeners();
+}
+
+void
+ElasticTrace::end_listening()
+{
+    inform("NOT IMPLEMENTED YET");
 }
 
 void
