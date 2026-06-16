@@ -47,6 +47,7 @@
 
 #include "base/compiler.hh"
 #include "base/logging.hh"
+#include "base/output.hh"
 #include "debug/Cache.hh"
 #include "debug/CacheComp.hh"
 #include "debug/CachePort.hh"
@@ -81,11 +82,12 @@ BaseCache::CacheResponsePort::CacheResponsePort(const std::string &_name,
 
 BaseCache::BaseCache(const BaseCacheParams &p, unsigned blk_size)
     : ClockedObject(p),
-      cpuSidePort (p.name + ".cpu_side_port", *this, "CpuSidePort"),
+      cpuSidePort(p.name + ".cpu_side_port", *this, "CpuSidePort"),
       memSidePort(p.name + ".mem_side_port", this, "MemSidePort"),
       accessor(*this),
       mshrQueue("MSHRs", p.mshrs, 0, p.demand_mshr_reserve, p.name),
       writeBuffer("write buffer", p.write_buffers, p.mshrs, p.name),
+      recordTrace(p.record_trace),
       tags(p.tags),
       compressor(p.compressor),
       partitionManager(p.partitioning_manager),
@@ -93,7 +95,7 @@ BaseCache::BaseCache(const BaseCacheParams &p, unsigned blk_size)
       writeAllocator(p.write_allocator),
       writebackClean(p.writeback_clean),
       tempBlockWriteback(nullptr),
-      writebackTempBlockAtomicEvent([this]{ writebackTempBlockAtomic(); },
+      writebackTempBlockAtomicEvent([this] { writebackTempBlockAtomic(); },
                                     name(), false,
                                     EventBase::Delayed_Writeback_Pri),
       blkSize(blk_size),
@@ -141,11 +143,26 @@ BaseCache::BaseCache(const BaseCacheParams &p, unsigned blk_size)
         "Compressed cache %s does not have a compression algorithm", name());
     if (compressor)
         compressor->setCache(this);
+
+    if (recordTrace) {
+        filename = simout.resolve(p.name + "_cacheTrace");
+        // std::string filename = simout.resolve(name() + "." +
+        std::cout << "Recording Trace in" << filename << std::endl;
+        cacheTrace.open(filename, std::ios::out | std::ios::trunc);
+
+        if (!cacheTrace.is_open()) {
+            panic("init cacheTrace file");
+        }
+    }
 }
 
 BaseCache::~BaseCache()
 {
     delete tempBlock;
+    if (cacheTrace.is_open()) {
+        cacheTrace.flush();
+        cacheTrace.close();
+    }
 }
 
 void
@@ -694,6 +711,14 @@ BaseCache::recvAtomic(PacketPtr pkt)
 
     CacheBlk *blk = nullptr;
     PacketList writebacks;
+
+    if (recordTrace) {
+        if (cacheTrace.is_open()) {
+            cacheTrace << std::hex << pkt->getBlockAddr(blkSize) << std::endl;
+        } else {
+            panic("cacheTrace");
+        }
+    }
     bool satisfied = access(pkt, blk, lat, writebacks);
 
     if (pkt->isClean() && blk && blk->isSet(CacheBlk::DirtyBit)) {

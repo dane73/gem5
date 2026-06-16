@@ -79,6 +79,16 @@ class LRURP(BaseReplacementPolicy):
     cxx_header = "mem/cache/replacement_policies/lru_rp.hh"
 
 
+class BeladyRP(BaseReplacementPolicy):
+    type = "BeladyRP"
+    cxx_class = "gem5::replacement_policy::BeladyRP"
+    cxx_header = "mem/cache/replacement_policies/belady_rp.hh"
+    cache_trace = Param.String("Cache Trace File")
+    cache_line_size = Param.UInt32(
+        Parent.cache_line_size, "Size of cache line in cache"
+    )
+
+
 class BIPRP(LRURP):
     type = "BIPRP"
     cxx_class = "gem5::replacement_policy::BIP"

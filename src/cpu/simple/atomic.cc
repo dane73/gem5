@@ -740,6 +740,7 @@ AtomicSimpleCPU::tick()
 Tick
 AtomicSimpleCPU::fetchInstMem()
 {
+    // std::cout << "fetch" << std::endl;
     auto &decoder = threadInfo[curThread]->thread->decoder;
 
     Packet pkt = Packet(ifetch_req, MemCmd::ReadReq);

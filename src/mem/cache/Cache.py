@@ -108,6 +108,7 @@ class BaseCache(ClockedObject):
     prefetcher = Param.BasePrefetcher(NULL, "Prefetcher attached to cache")
 
     tags = Param.BaseTags(BaseSetAssoc(), "Tag store")
+    record_trace = Param.Bool(False, "Set true to record the cache trace")
     replacement_policy = Param.BaseReplacementPolicy(
         LRURP(), "Replacement policy"
     )
