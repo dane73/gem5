@@ -71,16 +71,55 @@ AtomicSimpleCPU::init()
     data_amo_req->setContext(cid);
 }
 
+void AtomicSimpleCPU::initAddrPartition() {
+    // addAddrToPart(6627456, 23744);
+}
+
+void AtomicSimpleCPU::addAddrToPart(Addr addr, uint64_t size) {
+    if (size == 0) panic("Address interval can't be 0");
+    Addr blkAddr = addr & ~(cacheLineSize() - 1);
+    if (size == 1) {
+        partitionSet.insert(blkAddr);
+    } else {
+        if (x_part_init) {
+            panic("Already received x addr");
+        }
+        x_part_init = true;
+        xAddr = addr;
+        xSize = size;
+    }
+}
+
+bool AtomicSimpleCPU::isAddrInTemporal(Addr addr) {
+
+    Addr blkMask = ~(cacheLineSize() - 1);
+    if (x_partition) {
+        Addr startBlk = xAddr & blkMask;
+        Addr endBlk = (xAddr + xSize - 1) & blkMask;
+
+        return addr >= startBlk && addr <= endBlk;
+    }
+
+    Addr blkAddr = addr & blkMask;
+    return partitionSet.contains(blkAddr);
+
+}
+
+
 AtomicSimpleCPU::AtomicSimpleCPU(const BaseAtomicSimpleCPUParams &p)
     : BaseSimpleCPU(p),
+      is_partitioning(p.partition),
+      x_partition(p.x_part),
+      run_temporal(p.temporal),
       tickEvent([this]{ tick(); }, "AtomicSimpleCPU tick",
                 false, Event::CPU_Tick_Pri),
-      width(p.width), locked(false),
+      width(p.width),
+      locked(false),
       simulate_data_stalls(p.simulate_data_stalls),
       simulate_inst_stalls(p.simulate_inst_stalls),
-      icachePort(name() + ".icache_port"),
-      dcachePort(name() + ".dcache_port", this),
-      dcache_access(false), dcache_latency(0),
+      icachePort(name() + ".icache_port"), dcachePort(name() + ".dcache_port", this),
+      dcache_access(false),
+      dcache_latency(0),
       ppCommit(nullptr)
 {
     _status = Idle;
@@ -88,6 +127,10 @@ AtomicSimpleCPU::AtomicSimpleCPU(const BaseAtomicSimpleCPUParams &p)
     data_read_req = std::make_shared<Request>();
     data_write_req = std::make_shared<Request>();
     data_amo_req = std::make_shared<Request>();
+    initAddrPartition();
+    std::cout << "gem5 partition: " << is_partitioning << std::endl;
+    std::cout << "gem5 temporal: " << run_temporal << std::endl;
+    std::cout << "gem5 x_part: " << x_partition << std::endl;
 }
 
 
@@ -366,6 +409,11 @@ AtomicSimpleCPU::readMem(Addr addr, uint8_t *data, unsigned size,
     // use the CPU's statically allocated read request and packet objects
     const RequestPtr &req = data_read_req;
 
+    if (is_partitioning && isAddrInTemporal(addr) != run_temporal) {
+        // req->setFlags(Request::UNCACHEABLE);
+        flags.set(Request::UNCACHEABLE);
+    }
+
     if (traceData)
         traceData->setMem(addr, size, flags);
 
@@ -451,6 +499,11 @@ AtomicSimpleCPU::writeMem(uint8_t *data, unsigned size, Addr addr,
 
     // use the CPU's statically allocated write request and packet objects
     const RequestPtr &req = data_write_req;
+
+    if (is_partitioning && isAddrInTemporal(addr) != run_temporal) {
+        // req->setFlags(Request::UNCACHEABLE);
+        flags.set(Request::UNCACHEABLE);
+    }
 
     if (traceData)
         traceData->setMem(addr, size, flags);

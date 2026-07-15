@@ -54,6 +54,7 @@
 #include "base/debug.hh"
 #include "base/output.hh"
 #include "cpu/base.hh"
+#include "cpu/simple/atomic.hh"
 #include "cpu/thread_context.hh"
 #include "debug/Loader.hh"
 #include "debug/Quiesce.hh"
@@ -614,6 +615,45 @@ m5Hypercall(ThreadContext *tc, uint64_t hypercall_id)
     DPRINTF(PseudoInst, "pseudo_inst::m5Hypercall(%i)\n", hypercall_id);
     exitSimLoopWithHypercall("m5_hypercall instruction encountered", 0,
     curTick(),0, std::map<std::string, std::string>(), hypercall_id, true);
+}
+
+void
+addAddrToPart(ThreadContext *tc, Addr addr, uint64_t size) {
+    auto cpu = dynamic_cast<AtomicSimpleCPU *>(tc->getCpuPtr());
+    if (!cpu) {
+        panic("Could not find AtomicCPU!");
+    }
+    cpu->addAddrToPart(addr, size);
+}
+
+void read_addr(ThreadContext *tc,
+               Addr xaddr,
+               uint64_t xsize,
+               uint64_t elem_size,
+               Addr nt_addr,
+               uint64_t nt_size) {
+    auto cpu = dynamic_cast<AtomicSimpleCPU *>(tc->getCpuPtr());
+    if (!cpu) {
+        panic("Could not find AtomicCPU!");
+    }
+    inform("x addr: 0x%016" PRIX64 " | x size: %d\n", xaddr, xsize);
+    cpu->addAddrToPart(xaddr, xsize);
+
+    std::vector<uint8_t> nt(nt_size);
+    if (nt_size > 0) {
+        SETranslatingPortProxy se_proxy(tc);
+        se_proxy.readBlob(nt_addr, nt.data(), nt_size);
+    }
+
+    uint64_t n = 0;
+    for (uint64_t i = 0; i<nt_size; i++) {
+        if(!nt[i]) {
+            cpu->addAddrToPart(xaddr + i * elem_size, 1);
+            n++;
+        }
+    }
+    inform("Number of t in x: %ld\n", n);
+
 }
 
 } // namespace pseudo_inst

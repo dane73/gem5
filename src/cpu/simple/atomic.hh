@@ -59,7 +59,20 @@ class AtomicSimpleCPU : public BaseSimpleCPU
 
     void init() override;
 
+    void addAddrToPart(Addr addr, uint64_t size);
+
   protected:
+
+    void initAddrPartition(void);
+    bool isAddrInTemporal(Addr addr);
+    std::unordered_set<Addr> partitionSet;
+    bool x_part_init{false};
+    Addr xAddr;
+    uint64_t xSize;
+    bool is_partitioning;
+    bool x_partition;
+    bool run_temporal;
+
     EventFunctionWrapper tickEvent;
 
     const int width;
