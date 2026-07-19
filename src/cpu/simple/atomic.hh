@@ -65,6 +65,7 @@ class AtomicSimpleCPU : public BaseSimpleCPU
 
     void initAddrPartition(void);
     bool isAddrInTemporal(Addr addr);
+    void filterPacket(Addr addr, Request::Flags *flags);
     std::unordered_set<Addr> partitionSet;
     bool x_part_init{false};
     Addr xAddr;

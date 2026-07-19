@@ -105,6 +105,13 @@ bool AtomicSimpleCPU::isAddrInTemporal(Addr addr) {
 
 }
 
+void
+AtomicSimpleCPU::filterPacket(Addr addr, Request::Flags *flags)
+{
+    if (is_partitioning && isAddrInTemporal(addr) != run_temporal) {
+        flags->set(Request::UNCACHEABLE);
+    }
+}
 
 AtomicSimpleCPU::AtomicSimpleCPU(const BaseAtomicSimpleCPUParams &p)
     : BaseSimpleCPU(p),
@@ -409,10 +416,7 @@ AtomicSimpleCPU::readMem(Addr addr, uint8_t *data, unsigned size,
     // use the CPU's statically allocated read request and packet objects
     const RequestPtr &req = data_read_req;
 
-    if (is_partitioning && isAddrInTemporal(addr) != run_temporal) {
-        // req->setFlags(Request::UNCACHEABLE);
-        flags.set(Request::UNCACHEABLE);
-    }
+    filterPacket(addr, &flags);
 
     if (traceData)
         traceData->setMem(addr, size, flags);
@@ -500,10 +504,7 @@ AtomicSimpleCPU::writeMem(uint8_t *data, unsigned size, Addr addr,
     // use the CPU's statically allocated write request and packet objects
     const RequestPtr &req = data_write_req;
 
-    if (is_partitioning && isAddrInTemporal(addr) != run_temporal) {
-        // req->setFlags(Request::UNCACHEABLE);
-        flags.set(Request::UNCACHEABLE);
-    }
+    filterPacket(addr, &flags);
 
     if (traceData)
         traceData->setMem(addr, size, flags);
