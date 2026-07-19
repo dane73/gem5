@@ -1,12 +1,21 @@
 /**
  * @file
+ * Declaration of Belady's optimal replacement policy, which replays a
+ * recorded cache access trace to evict the entry whose next use is
+ * furthest in the future.
  */
 
 #ifndef __MEM_CACHE_REPLACEMENT_POLICIES_BELADY_RP_HH__
 #define __MEM_CACHE_REPLACEMENT_POLICIES_BELADY_RP_HH__
 
+#include <cstddef>
+#include <cstdint>
+#include <deque>
+#include <fstream>
+#include <memory>
+#include <unordered_map>
+
 #include "mem/cache/replacement_policies/base.hh"
-#include "proto/protoio.hh"
 
 namespace gem5
 {
@@ -16,59 +25,63 @@ struct BeladyRPParams;
 namespace replacement_policy
 {
 
+/**
+ * Belady's optimal replacement policy. Replays a cache access trace
+ * (one block address per line, hex, recorded e.g. by RecordTraceRP) and
+ * victimizes the candidate whose next use lies furthest in the future,
+ * or one that is never used again.
+ *
+ * Every touch()/reset() consumes exactly one trace entry, mirroring how
+ * the trace was recorded; any divergence panics.
+ */
 class BeladyRP : public Base
 {
   protected:
-    // enum class IdxState {
-    //     Uninit,
-    //     Init,
-    //     Finished,
-    // };
-
     struct BeladyReplData : ReplacementData
     {
+        /** Whether the entry holds usable data. */
         bool valid;
+
+        /** Block address held by this entry; only meaningful while
+         * valid is set. */
         Addr addr;
 
-        // this is needed since addr gets initialzed with 0, which is an
-        // address that could actually get used.
-        // However, it is nessessary to differentiate between unitialized
-        // and initalized ways
-        bool init;
-
-        /**
-         * Default constructor. Invalidate data.
-         */
-        BeladyReplData() : valid(false), addr(0), init(false) {}
+        /** Default constructor. Invalidate data. */
+        BeladyReplData() : valid(false), addr(0) {}
     };
 
+    /** Trace file stream; only used to fill addresses on construction. */
     std::ifstream cacheTrace;
+
+    /** Per block address: queue of trace indices of its future uses. */
     std::unordered_map<Addr, std::deque<size_t>> addresses;
+
+    /** Block size, used to compute packets' block addresses. */
     uint64_t cacheLineSize;
 
+    /** Index of the next trace entry to be consumed. */
     size_t currIdx;
+
+    /** Next use of address, or MaxAddr if it is never used again. */
     size_t get_index(Addr address) const;
+
+    /** Consume the trace entry of address; panics on out-of-order use. */
     void pop_index(Addr address);
 
   public:
-    typedef BeladyRPParams Params;
+    PARAMS(BeladyRP);
     BeladyRP(const Params &p);
     ~BeladyRP() = default;
 
     /**
-     * Invalidate replacement data to set it as the next probable victim.
-     * Sets its last touch tick as the starting tick.
-     *
-     * @param replacement_data Replacement data to be invalidated.
+     * Invalidate replacement data. The slot loses its address identity,
+     * so the next reset() consumes a trace entry for the new address.
      */
     void invalidate(
         const std::shared_ptr<ReplacementData> &replacement_data) override;
 
     /**
-     * Touch an entry to update its replacement data.
-     * Sets its last touch tick as the current tick.
-     *
-     * @param replacement_data Replacement data to be touched.
+     * Update replacement data on a hit: consumes one trace entry.
      */
     void touch(const std::shared_ptr<ReplacementData> &replacement_data,
                const PacketPtr pkt) override;
@@ -76,29 +89,22 @@ class BeladyRP : public Base
         const override;
 
     /**
-     * Reset replacement data. Used when an entry is inserted.
-     * Sets its last touch tick as the current tick.
-     *
-     * @param replacement_data Replacement data to be reset.
+     * Reset replacement data on insertion: consumes one trace entry and
+     * binds the slot to the inserted block address. Must only be called
+     * for empty or invalidated slots.
      */
     void reset(const std::shared_ptr<ReplacementData> &replacement_data,
                const PacketPtr pkt) override;
     void reset(const std::shared_ptr<ReplacementData> &) const override;
 
     /**
-     * Find replacement victim using LRU timestamps.
-     *
-     * @param candidates Replacement candidates, selected by indexing policy.
-     * @return Replacement entry to be replaced.
+     * Find replacement victim: an invalid entry if one exists, otherwise
+     * the candidate whose next use is furthest away or never comes.
      */
     ReplaceableEntry *
     getVictim(const ReplacementCandidates &candidates) const override;
 
-    /**
-     * Instantiate a replacement data entry.
-     *
-     * @return A shared pointer to the new replacement data.
-     */
+    /** Instantiate a replacement data entry. */
     std::shared_ptr<ReplacementData> instantiateEntry() override;
 };
 

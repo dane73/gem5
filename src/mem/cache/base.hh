@@ -48,7 +48,6 @@
 
 #include <cassert>
 #include <cstdint>
-#include <fstream>
 #include <string>
 
 #include "base/addr_range.hh"
@@ -353,10 +352,6 @@ class BaseCache : public ClockedObject
 
     /** Write/writeback buffer */
     WriteQueue writeBuffer;
-
-    bool recordTrace;
-    std::string filename;
-    std::ofstream cacheTrace;
 
     /** Tag and data Storage */
     BaseTags *tags;
