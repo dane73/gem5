@@ -54,6 +54,16 @@ class PartitionManager(SimObject):
     )
 
 
+class SectorHintPartitionManager(PartitionManager):
+    """Reads the PartitionID the core attached to the request, so that
+    per-reference locality hints steer allocation while the tag lookup stays
+    global -- the behaviour of a sector cache."""
+
+    type = "SectorHintPartitionManager"
+    cxx_header = "mem/cache/tags/partitioning_policies/sector_hint.hh"
+    cxx_class = "gem5::partitioning_policy::SectorHintPartitionManager"
+
+
 class BasePartitioningPolicy(SimObject):
     type = "BasePartitioningPolicy"
     cxx_header = "mem/cache/tags/partitioning_policies/base_pp.hh"

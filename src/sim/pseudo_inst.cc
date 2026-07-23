@@ -618,42 +618,36 @@ m5Hypercall(ThreadContext *tc, uint64_t hypercall_id)
 }
 
 void
-addAddrToPart(ThreadContext *tc, Addr addr, uint64_t size) {
+read_addr(ThreadContext *tc, Addr xaddr, uint64_t xsize, uint64_t elem_size)
+{
     auto cpu = dynamic_cast<AtomicSimpleCPU *>(tc->getCpuPtr());
     if (!cpu) {
         panic("Could not find AtomicCPU!");
     }
-    cpu->addAddrToPart(addr, size);
+    inform("x addr: 0x%016" PRIX64 " | x size: %ld | elem size: %ld\n", xaddr,
+           xsize, elem_size);
+    cpu->registerXRange(xaddr, xsize, elem_size);
 }
 
-void read_addr(ThreadContext *tc,
-               Addr xaddr,
-               uint64_t xsize,
-               uint64_t elem_size,
-               Addr nt_addr,
-               uint64_t nt_size) {
+void
+next_temporal(ThreadContext *tc, Addr colidx_ptr)
+{
     auto cpu = dynamic_cast<AtomicSimpleCPU *>(tc->getCpuPtr());
     if (!cpu) {
         panic("Could not find AtomicCPU!");
     }
-    inform("x addr: 0x%016" PRIX64 " | x size: %d\n", xaddr, xsize);
-    cpu->addAddrToPart(xaddr, xsize);
 
-    std::vector<uint8_t> nt(nt_size);
-    if (nt_size > 0) {
-        SETranslatingPortProxy se_proxy(tc);
-        se_proxy.readBlob(nt_addr, nt.data(), nt_size);
+    if (colidx_ptr == 0) {
+        cpu->clearNextTemporal();
+        return;
     }
 
-    uint64_t n = 0;
-    for (uint64_t i = 0; i<nt_size; i++) {
-        if(!nt[i]) {
-            cpu->addAddrToPart(xaddr + i * elem_size, 1);
-            n++;
-        }
-    }
-    inform("Number of t in x: %ld\n", n);
-
+    // Functional read, so announcing the hint costs no simulated memory
+    // access. The workload's column indices are int32_t.
+    int32_t col = 0;
+    SETranslatingPortProxy se_proxy(tc);
+    se_proxy.readBlob(colidx_ptr, &col, sizeof(col));
+    cpu->setNextTemporal(col);
 }
 
 } // namespace pseudo_inst

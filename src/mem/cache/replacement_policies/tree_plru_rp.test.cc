@@ -319,6 +319,79 @@ TEST_F(TreePLRUVictimizationTestF, TestMixedResetInvalidate)
     ASSERT_EQ(rp->getVictim(candidates), &entries[1]);
 }
 
+/// Build a candidate list holding only the entries at the given indices, in
+/// order. Cache partitioning passes such a subset of a set's ways to
+/// getVictim(): the tree still spans the whole set, but only these ways may be
+/// victimised.
+gem5::ReplacementCandidates
+subset(std::vector<gem5::ReplaceableEntry> &entries,
+       const std::vector<int> &indices)
+{
+    gem5::ReplacementCandidates out;
+    for (int i : indices) {
+        out.push_back(&entries[i]);
+    }
+    return out;
+}
+
+/// With a filtered candidate list the tree may point at a leaf that is not a
+/// candidate. The victim must then be the correct leaf among the ones that
+/// are, not an out-of-range access (the bug this path fixes).
+///
+/// Fresh tree, all nodes 0, so the unconstrained victim would be entry A:
+///    ____0____
+///  __0__   __0__
+/// _0_ _0_ _0_ _0_
+/// A B C D E F G H
+///
+/// Restricting the candidates to the right half {E,F,G,H} makes the walk skip
+/// the empty left subtree; with both right-subtree children populated the 0
+/// bits then steer to the leftmost of them, E at index 4.
+TEST_F(TreePLRUVictimizationTestF, GetVictimPartitionRightHalf)
+{
+    auto candidates = subset(entries, {4, 5, 6, 7});
+    ASSERT_EQ(rp->getVictim(candidates), &entries[4]);
+}
+
+/// The other half {A,B,C,D}, after entry A is made MRU:
+///    ____1____
+///  __1__   __0__
+/// _1_ _0_ _0_ _0_
+/// A B C D E F G H
+/// Unconstrained this points at E (index 4); restricted to the left half the
+/// right subtree is empty, so the walk stays left, the node-1 bit sends it
+/// right to the {C,D} pair, and the node-4 bit picks C at index 2.
+TEST_F(TreePLRUVictimizationTestF, GetVictimPartitionLeftHalf)
+{
+    rp->reset(entries[0].replacementData);
+    /// The unconstrained victim is outside the partition.
+    ASSERT_EQ(rp->getVictim(candidates), &entries[4]);
+    auto left = subset(entries, {0, 1, 2, 3});
+    ASSERT_EQ(rp->getVictim(left), &entries[2]);
+}
+
+/// A candidate subset equal to the whole set exercises the unfiltered fast
+/// path and must reproduce the unconstrained victim exactly (a partition that
+/// owns every way behaves like no partition).
+TEST_F(TreePLRUVictimizationTestF, GetVictimPartitionFullSetUnchanged)
+{
+    rp->reset(entries[0].replacementData);
+    auto all = subset(entries, {0, 1, 2, 3, 4, 5, 6, 7});
+    ASSERT_EQ(all.size(), candidates.size());
+    ASSERT_EQ(rp->getVictim(all), rp->getVictim(candidates));
+    ASSERT_EQ(rp->getVictim(all), &entries[4]);
+}
+
+/// An invalid entry inside the partition still wins: invalidate() points the
+/// tree at entry G (index 6), and with G in the candidate subset the walk
+/// follows those bits straight to it.
+TEST_F(TreePLRUVictimizationTestF, GetVictimPartitionInvalidInSubset)
+{
+    rp->invalidate(entries[6].replacementData);
+    auto candidates = subset(entries, {4, 5, 6, 7});
+    ASSERT_EQ(rp->getVictim(candidates), &entries[6]);
+}
+
 class SmallTreePLRUVictimizationTestF : public TreePLRUVictimizationTestF
 {
   public:

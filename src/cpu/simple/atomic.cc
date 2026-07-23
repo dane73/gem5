@@ -71,60 +71,85 @@ AtomicSimpleCPU::init()
     data_amo_req->setContext(cid);
 }
 
-void AtomicSimpleCPU::initAddrPartition() {
-    // addAddrToPart(6627456, 23744);
+void
+AtomicSimpleCPU::registerXRange(Addr addr, uint64_t size, uint64_t elem_size)
+{
+    panic_if(size == 0, "x range size can't be 0");
+    panic_if(elem_size == 0, "x element size can't be 0");
+    panic_if(x_part_init, "Already received x addr");
+    x_part_init = true;
+    xAddr = addr;
+    xSize = size;
+    xElemSize = elem_size;
 }
 
-void AtomicSimpleCPU::addAddrToPart(Addr addr, uint64_t size) {
-    if (size == 0) panic("Address interval can't be 0");
-    Addr blkAddr = addr & ~(cacheLineSize() - 1);
-    if (size == 1) {
-        partitionSet.insert(blkAddr);
-    } else {
-        if (x_part_init) {
-            panic("Already received x addr");
-        }
-        x_part_init = true;
-        xAddr = addr;
-        xSize = size;
-    }
+AtomicSimpleCPU::HintStats::HintStats(statistics::Group *parent)
+    : statistics::Group(parent),
+      ADD_STAT(hints, statistics::units::Count::get(),
+               "number of temporal hints received (one per nonzero)"),
+      ADD_STAT(temporalHints, statistics::units::Count::get(),
+               "number of hints naming a temporal reference")
+{}
+
+void
+AtomicSimpleCPU::setNextTemporal(uint32_t col_idx)
+{
+    panic_if(!x_part_init, "Temporal hint before the x range was registered");
+    currAddr = xAddr + (Addr)col_idx * xElemSize;
+    hintStats.hints++;
+    hintStats.temporalHints++;
+}
+
+void
+AtomicSimpleCPU::clearNextTemporal()
+{
+    currAddr = MaxAddr;
+    hintStats.hints++;
 }
 
 bool AtomicSimpleCPU::isAddrInTemporal(Addr addr) {
 
     Addr blkMask = ~(cacheLineSize() - 1);
-    if (x_partition) {
-        Addr startBlk = xAddr & blkMask;
-        Addr endBlk = (xAddr + xSize - 1) & blkMask;
+    Addr blkAddr = addr & blkMask;
+    Addr startBlk = xAddr & blkMask;
+    Addr endBlk = (xAddr + xSize - 1) & blkMask;
+    bool inX = blkAddr >= startBlk && blkAddr <= endBlk;
 
-        return addr >= startBlk && addr <= endBlk;
+    // Coarse mode: the whole x vector forms the temporal partition.
+    if (x_partition) {
+        return inX;
     }
 
-    Addr blkAddr = addr & blkMask;
-    return partitionSet.contains(blkAddr);
-
+    // Per-reference mode: only the element the current nonzero references.
+    return inX && addr == currAddr;
 }
 
 void
-AtomicSimpleCPU::filterPacket(Addr addr, Request::Flags *flags)
+AtomicSimpleCPU::filterPacket(Addr addr, const RequestPtr &req)
 {
-    if (is_partitioning && isAddrInTemporal(addr) != run_temporal) {
-        flags->set(Request::UNCACHEABLE);
+    if (!is_partitioning) {
+        return;
     }
+
+    // The request objects are statically allocated and reused, so the tag has
+    // to be written on every access -- otherwise a later access would inherit
+    // the previous one's partition.
+    req->setExtension(isAddrInTemporal(addr) ? temporalExt : nonTemporalExt);
 }
 
 AtomicSimpleCPU::AtomicSimpleCPU(const BaseAtomicSimpleCPUParams &p)
     : BaseSimpleCPU(p),
+      hintStats(this),
       is_partitioning(p.partition),
       x_partition(p.x_part),
-      run_temporal(p.temporal),
-      tickEvent([this]{ tick(); }, "AtomicSimpleCPU tick",
-                false, Event::CPU_Tick_Pri),
+      tickEvent([this] { tick(); }, "AtomicSimpleCPU tick", false,
+                Event::CPU_Tick_Pri),
       width(p.width),
       locked(false),
       simulate_data_stalls(p.simulate_data_stalls),
       simulate_inst_stalls(p.simulate_inst_stalls),
-      icachePort(name() + ".icache_port"), dcachePort(name() + ".dcache_port", this),
+      icachePort(name() + ".icache_port"),
+      dcachePort(name() + ".dcache_port", this),
       dcache_access(false),
       dcache_latency(0),
       ppCommit(nullptr)
@@ -134,9 +159,12 @@ AtomicSimpleCPU::AtomicSimpleCPU(const BaseAtomicSimpleCPUParams &p)
     data_read_req = std::make_shared<Request>();
     data_write_req = std::make_shared<Request>();
     data_amo_req = std::make_shared<Request>();
-    initAddrPartition();
+    temporalExt = std::make_shared<partitioning_policy::SectorHintExtension>(
+        partitioning_policy::TEMPORAL_PARTITION_ID);
+    nonTemporalExt =
+        std::make_shared<partitioning_policy::SectorHintExtension>(
+            partitioning_policy::NON_TEMPORAL_PARTITION_ID);
     std::cout << "gem5 partition: " << is_partitioning << std::endl;
-    std::cout << "gem5 temporal: " << run_temporal << std::endl;
     std::cout << "gem5 x_part: " << x_partition << std::endl;
 }
 
@@ -416,7 +444,7 @@ AtomicSimpleCPU::readMem(Addr addr, uint8_t *data, unsigned size,
     // use the CPU's statically allocated read request and packet objects
     const RequestPtr &req = data_read_req;
 
-    filterPacket(addr, &flags);
+    filterPacket(addr, req);
 
     if (traceData)
         traceData->setMem(addr, size, flags);
@@ -504,7 +532,7 @@ AtomicSimpleCPU::writeMem(uint8_t *data, unsigned size, Addr addr,
     // use the CPU's statically allocated write request and packet objects
     const RequestPtr &req = data_write_req;
 
-    filterPacket(addr, &flags);
+    filterPacket(addr, req);
 
     if (traceData)
         traceData->setMem(addr, size, flags);

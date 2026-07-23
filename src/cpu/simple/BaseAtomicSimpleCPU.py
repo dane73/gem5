@@ -62,7 +62,6 @@ class BaseAtomicSimpleCPU(BaseSimpleCPU):
     simulate_data_stalls = Param.Bool(False, "Simulate dcache stall cycles")
     simulate_inst_stalls = Param.Bool(False, "Simulate icache stall cycles")
     partition = Param.Bool(False, "Run partitioned")
-    temporal = Param.Bool(False, "Run temporal partition")
     x_part = Param.Bool(False, "Partition by x vector")
 
     def addSimPointProbe(self, interval):

@@ -114,9 +114,9 @@ void m5Syscall(ThreadContext *tc);
 void togglesync(ThreadContext *tc);
 void triggerWorkloadEvent(ThreadContext *tc);
 void m5Hypercall(ThreadContext *tc, uint64_t hypercall_id);
-void addAddrToPart(ThreadContext *tc, Addr addr, uint64_t size);
-void read_addr(ThreadContext *tc, Addr xaddr, uint64_t xsize, uint64_t elem_size, Addr nt_addr,
-               uint64_t nt_size);
+void read_addr(ThreadContext *tc, Addr xaddr, uint64_t xsize,
+               uint64_t elem_size);
+void next_temporal(ThreadContext *tc, Addr colidx_ptr);
 
 /**
  * Execute a decoded M5 pseudo instruction
@@ -237,12 +237,12 @@ pseudoInstWork(ThreadContext *tc, uint8_t func, uint64_t &result)
         return true;
 
       case M5OP_RESERVED1:
-        invokeSimcall<ABI>(tc, addAddrToPart);
-        return true;
+          invokeSimcall<ABI>(tc, read_addr);
+          return true;
 
       case M5OP_RESERVED2:
-        invokeSimcall<ABI>(tc, read_addr);
-        return true;
+          invokeSimcall<ABI>(tc, next_temporal);
+          return true;
 
       case M5OP_RESERVED3:
       case M5OP_RESERVED4:

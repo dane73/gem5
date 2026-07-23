@@ -35,6 +35,8 @@
 #include "mem/cache/replacement_policies/tree_plru_rp.hh"
 
 #include <cmath>
+#include <memory>
+#include <vector>
 
 #include "base/intmath.hh"
 #include "base/logging.hh"
@@ -180,19 +182,65 @@ TreePLRU::getVictim(const ReplacementCandidates& candidates) const
     // Index of the tree entry we are currently checking. Start with root.
     uint64_t tree_index = 0;
 
-    // Parse tree
-    while (tree_index < tree->size()) {
-        // Go to the next tree entry
-        if (tree->at(tree_index)) {
-            tree_index = rightSubtreeIndex(tree_index);
-        } else {
-            tree_index = leftSubtreeIndex(tree_index);
+    if (candidates.size() == numLeaves) {
+        // Every leaf of the set is a candidate, so the PLRU bits can be
+        // followed unconditionally.
+        while (tree_index < tree->size()) {
+            // Go to the next tree entry
+            if (tree->at(tree_index)) {
+                tree_index = rightSubtreeIndex(tree_index);
+            } else {
+                tree_index = leftSubtreeIndex(tree_index);
+            }
+        }
+
+        // The tree index is currently at the leaf of the victim displaced by
+        // the number of non-leaf nodes
+        return candidates.at(tree_index - (numLeaves - 1));
+    }
+
+    // Cache partitioning passes only the subset of the set's ways that the
+    // requesting partition may victimise, while the tree still spans the whole
+    // set. Following the PLRU bits blindly would then walk to a leaf that is
+    // not among the candidates, so mark which subtrees still hold one and only
+    // consult the bit where both sides do.
+    std::vector<bool> hasCandidate(2 * numLeaves - 1, false);
+    for (const auto &candidate : candidates) {
+        hasCandidate[std::static_pointer_cast<TreePLRUReplData>(
+                         candidate->replacementData)
+                         ->index] = true;
+    }
+    for (uint64_t i = 2 * numLeaves - 2; i > 0; i--) {
+        if (hasCandidate[i]) {
+            hasCandidate[parentIndex(i)] = true;
         }
     }
 
-    // The tree index is currently at the leaf of the victim displaced by the
-    // number of non-leaf nodes
-    return candidates.at(tree_index - (numLeaves - 1));
+    while (tree_index < tree->size()) {
+        const uint64_t left = leftSubtreeIndex(tree_index);
+        const uint64_t right = rightSubtreeIndex(tree_index);
+
+        if (!hasCandidate[left]) {
+            tree_index = right;
+        } else if (!hasCandidate[right]) {
+            tree_index = left;
+        } else {
+            tree_index = tree->at(tree_index) ? right : left;
+        }
+    }
+
+    // The candidates are a subset of the set, so their position in the vector
+    // no longer matches the leaf index and the victim has to be looked up.
+    for (const auto &candidate : candidates) {
+        if (std::static_pointer_cast<TreePLRUReplData>(
+                candidate->replacementData)
+                ->index == tree_index) {
+            return candidate;
+        }
+    }
+
+    panic("TreePLRU walk ended on leaf %llu, which is not a candidate",
+          tree_index);
 }
 
 std::shared_ptr<ReplacementData>

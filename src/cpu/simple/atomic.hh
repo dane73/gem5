@@ -41,8 +41,11 @@
 #ifndef __CPU_SIMPLE_ATOMIC_HH__
 #define __CPU_SIMPLE_ATOMIC_HH__
 
+#include <memory>
+
 #include "cpu/simple/base.hh"
 #include "cpu/simple/exec_context.hh"
+#include "mem/cache/tags/partitioning_policies/sector_hint.hh"
 #include "mem/request.hh"
 #include "params/BaseAtomicSimpleCPU.hh"
 #include "sim/probe/probe.hh"
@@ -59,20 +62,45 @@ class AtomicSimpleCPU : public BaseSimpleCPU
 
     void init() override;
 
-    void addAddrToPart(Addr addr, uint64_t size);
+    /** Register the x vector's address range, once, before the workload runs.
+     */
+    void registerXRange(Addr addr, uint64_t size, uint64_t elem_size);
+
+    /**
+     * Announce which x element the next nonzero references. Temporality is a
+     * property of the reference, not of the element, so the same address may
+     * be temporal at one reference and non-temporal at the next.
+     */
+    void setNextTemporal(uint32_t col_idx);
+    void clearNextTemporal();
 
   protected:
-
-    void initAddrPartition(void);
     bool isAddrInTemporal(Addr addr);
-    void filterPacket(Addr addr, Request::Flags *flags);
-    std::unordered_set<Addr> partitionSet;
+    void filterPacket(Addr addr, const RequestPtr &req);
     bool x_part_init{false};
-    Addr xAddr;
-    uint64_t xSize;
+    Addr xAddr{0};
+    uint64_t xSize{0};
+    uint64_t xElemSize{0};
+    /** x element the current reference may cache; MaxAddr means none. */
+    Addr currAddr{MaxAddr};
+
+    /**
+     * Cross-check against the workload: hints must equal the number of
+     * nonzeros and temporalHints the number of temporal references.
+     */
+    struct HintStats : public statistics::Group
+    {
+        HintStats(statistics::Group *parent);
+        statistics::Scalar hints;
+        statistics::Scalar temporalHints;
+    } hintStats;
+
     bool is_partitioning;
     bool x_partition;
-    bool run_temporal;
+
+    /** Pre-allocated so tagging a request costs no allocation per access. */
+    std::shared_ptr<partitioning_policy::SectorHintExtension> temporalExt;
+    std::shared_ptr<partitioning_policy::SectorHintExtension> nonTemporalExt;
 
     EventFunctionWrapper tickEvent;
 
