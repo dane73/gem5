@@ -618,36 +618,43 @@ m5Hypercall(ThreadContext *tc, uint64_t hypercall_id)
 }
 
 void
-read_addr(ThreadContext *tc, Addr xaddr, uint64_t xsize, uint64_t elem_size)
+read_addr(ThreadContext *tc, Addr xaddr, uint64_t xsize, uint64_t elem_size,
+          Addr nt_addr, uint64_t nt_size)
 {
     auto cpu = dynamic_cast<AtomicSimpleCPU *>(tc->getCpuPtr());
     if (!cpu) {
         panic("Could not find AtomicCPU!");
     }
-    inform("x addr: 0x%016" PRIX64 " | x size: %ld | elem size: %ld\n", xaddr,
-           xsize, elem_size);
+    inform("x addr: 0x%016" PRIX64 " | x size: %ld | elem size: %ld | "
+           "nt bytes: %ld\n",
+           xaddr, xsize, elem_size, nt_size);
     cpu->registerXRange(xaddr, xsize, elem_size);
+
+    // One functional bulk read of the whole packed per-nonzero nt bit vector,
+    // so classification costs no simulated memory access and no per-reference
+    // read in the measured loop.
+    std::vector<uint8_t> nt(nt_size);
+    if (nt_size > 0) {
+        SETranslatingPortProxy se_proxy(tc);
+        se_proxy.readBlob(nt_addr, nt.data(), nt_size);
+    }
+    cpu->setNtVector(std::move(nt));
 }
 
 void
-next_temporal(ThreadContext *tc, Addr colidx_ptr)
+send_nnz_colidx(ThreadContext *tc, uint64_t nnz_idx, Addr colidx_ptr)
 {
     auto cpu = dynamic_cast<AtomicSimpleCPU *>(tc->getCpuPtr());
     if (!cpu) {
         panic("Could not find AtomicCPU!");
     }
 
-    if (colidx_ptr == 0) {
-        cpu->clearNextTemporal();
-        return;
-    }
-
-    // Functional read, so announcing the hint costs no simulated memory
-    // access. The workload's column indices are int32_t.
+    // Functional read of this nonzero's column index, so pinning the exact x
+    // element costs no simulated memory access. Column indices are int32_t.
     int32_t col = 0;
     SETranslatingPortProxy se_proxy(tc);
     se_proxy.readBlob(colidx_ptr, &col, sizeof(col));
-    cpu->setNextTemporal(col);
+    cpu->setNextTemporal(nnz_idx, col);
 }
 
 } // namespace pseudo_inst

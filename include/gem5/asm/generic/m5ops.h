@@ -111,7 +111,7 @@
     M5OP(m5_workload, M5OP_WORKLOAD)                                          \
     M5OP(m5_hypercall, M5OP_HYPERCALL)                                        \
     M5OP(m5_read_addr, M5OP_RESERVED1)                                        \
-    M5OP(m5_next_temporal, M5OP_RESERVED2)
+    M5OP(m5_send_nnz_colidx, M5OP_RESERVED2)
 
 #define M5OP_MERGE_TOKENS_I(a, b) a##b
 #define M5OP_MERGE_TOKENS(a, b) M5OP_MERGE_TOKENS_I(a, b)

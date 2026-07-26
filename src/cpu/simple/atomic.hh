@@ -41,7 +41,9 @@
 #ifndef __CPU_SIMPLE_ATOMIC_HH__
 #define __CPU_SIMPLE_ATOMIC_HH__
 
+#include <cstdint>
 #include <memory>
+#include <vector>
 
 #include "cpu/simple/base.hh"
 #include "cpu/simple/exec_context.hh"
@@ -67,12 +69,19 @@ class AtomicSimpleCPU : public BaseSimpleCPU
     void registerXRange(Addr addr, uint64_t size, uint64_t elem_size);
 
     /**
-     * Announce which x element the next nonzero references. Temporality is a
-     * property of the reference, not of the element, so the same address may
-     * be temporal at one reference and non-temporal at the next.
+     * Load the packed per-nonzero non-temporal bit vector into the CPU, once,
+     * before the workload runs. Bit i set means reference i is non-temporal.
      */
-    void setNextTemporal(uint32_t col_idx);
-    void clearNextTemporal();
+    void setNtVector(std::vector<uint8_t> nt);
+
+    /**
+     * Announce the nonzero the next x access belongs to: nnz_idx selects its
+     * non-temporal bit in the loaded nt vector, col pins the exact x element.
+     * Temporality is a property of the reference, not of the x element, so the
+     * same address may be temporal at one nonzero and non-temporal at the
+     * next.
+     */
+    void setNextTemporal(uint64_t nnz_idx, int32_t col);
 
   protected:
     bool isAddrInTemporal(Addr addr);
@@ -83,6 +92,9 @@ class AtomicSimpleCPU : public BaseSimpleCPU
     uint64_t xElemSize{0};
     /** x element the current reference may cache; MaxAddr means none. */
     Addr currAddr{MaxAddr};
+
+    /** Packed per-nonzero non-temporal bits; bit set means non-temporal. */
+    std::vector<uint8_t> ntBits;
 
     /**
      * Cross-check against the workload: hints must equal the number of

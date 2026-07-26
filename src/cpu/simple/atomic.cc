@@ -83,6 +83,12 @@ AtomicSimpleCPU::registerXRange(Addr addr, uint64_t size, uint64_t elem_size)
     xElemSize = elem_size;
 }
 
+void
+AtomicSimpleCPU::setNtVector(std::vector<uint8_t> nt)
+{
+    ntBits = std::move(nt);
+}
+
 AtomicSimpleCPU::HintStats::HintStats(statistics::Group *parent)
     : statistics::Group(parent),
       ADD_STAT(hints, statistics::units::Count::get(),
@@ -92,19 +98,18 @@ AtomicSimpleCPU::HintStats::HintStats(statistics::Group *parent)
 {}
 
 void
-AtomicSimpleCPU::setNextTemporal(uint32_t col_idx)
+AtomicSimpleCPU::setNextTemporal(uint64_t nnz_idx, int32_t col)
 {
     panic_if(!x_part_init, "Temporal hint before the x range was registered");
-    currAddr = xAddr + (Addr)col_idx * xElemSize;
+    panic_if((nnz_idx >> 3) >= ntBits.size(),
+             "nonzero index out of range for the nt bit vector");
+    // A set bit means the reference bypasses the temporal partition, so a
+    // clear bit is a temporal reference. Only a temporal reference pins its x
+    // element; everything else leaves currAddr unset (non-temporal).
+    bool temporal = !(ntBits[nnz_idx >> 3] & (1u << (nnz_idx & 7)));
+    currAddr = temporal ? xAddr + (Addr)col * xElemSize : MaxAddr;
     hintStats.hints++;
-    hintStats.temporalHints++;
-}
-
-void
-AtomicSimpleCPU::clearNextTemporal()
-{
-    currAddr = MaxAddr;
-    hintStats.hints++;
+    hintStats.temporalHints += temporal;
 }
 
 bool AtomicSimpleCPU::isAddrInTemporal(Addr addr) {

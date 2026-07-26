@@ -67,14 +67,16 @@ void m5_panic(void);
 void m5_work_begin(uint64_t workid, uint64_t threadid);
 void m5_work_end(uint64_t workid, uint64_t threadid);
 void m5_hypercall(uint64_t hypercall_id);
-void m5_read_addr(uint64_t xaddr, uint64_t xlen, uint64_t elem_size);
+void m5_read_addr(uint64_t xaddr, uint64_t xlen, uint64_t elem_size,
+                  uint64_t nt_addr, uint64_t nt_size);
 /*
- * Announce the x-vector element referenced by the next nonzero, given as a
- * pointer to its column index, or 0 if that reference is non-temporal.
- * Callers in a measured region should emit the pseudo op inline instead of
- * calling this, so the call/ret pair does not add stack traffic.
+ * Announce the nonzero the next x access belongs to: nnz_idx selects its
+ * non-temporal bit in the loaded nt vector, colidx_ptr points at its column
+ * index so the simulator can pin the exact x element. Callers in a measured
+ * region should emit the pseudo op inline instead of calling this, so the
+ * call/ret pair does not add stack traffic.
  */
-void m5_next_temporal(uint64_t colidx_ptr);
+void m5_send_nnz_colidx(uint64_t nnz_idx, uint64_t colidx_ptr);
 /*
  * Send a very generic poke to the workload so it can do something. It's up to
  * the workload to know what information to look for to interpret an event,
