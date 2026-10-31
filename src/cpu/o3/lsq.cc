@@ -835,11 +835,17 @@ LSQ::pushRequest(const DynInstPtr& inst, bool isLoad, uint8_t *data,
             // (e.g. re-exec).
             if (fault != NoFault)
                 inst->getFault() = fault;
-        } else if (isLoad) {
+        } else {
             inst->setMemAccPredicate(false);
-            // Commit will have to clean up whatever happened.  Set this
-            // instruction as executed.
-            inst->setExecuted();
+            if (isLoad) {
+                inst->setExecuted();
+            } else {
+                if (inst->sqIdx >= 0) {
+                    thread[tid]->storeQueue[inst->sqIdx].setRequest(nullptr);
+                }
+                request->discard();
+                inst->clearRequest();
+            }
         }
     }
 
@@ -1044,9 +1050,14 @@ LSQRequest::LSQRequest(LSQUnit *port, const DynInstPtr &inst, bool isLoad)
       _amo_op(nullptr)
 {
     flags.set(Flag::IsLoad, isLoad);
+    // A prefetch has no destination register, so keep it off the load
+    // writeback path. HTM prefetches are excluded: their response may
+    // signal a transaction abort handled in completeDataAccess().
     flags.set(Flag::WriteBackToRegister,
               _inst->isStoreConditional() || _inst->isAtomic() ||
-              _inst->isLoad());
+                  (_inst->isLoad() &&
+                   !((_inst->isDataPrefetch() || _inst->isInstPrefetch()) &&
+                     !_inst->inHtmTransactionalState())));
     flags.set(Flag::IsAtomic, _inst->isAtomic());
     install();
 }
@@ -1071,9 +1082,12 @@ LSQRequest::LSQRequest(LSQUnit *port, const DynInstPtr &inst, bool isLoad,
       _hasStaleTranslation(stale_translation)
 {
     flags.set(Flag::IsLoad, isLoad);
+    // See the comment on WriteBackToRegister in the constructor above.
     flags.set(Flag::WriteBackToRegister,
               _inst->isStoreConditional() || _inst->isAtomic() ||
-              _inst->isLoad());
+                  (_inst->isLoad() &&
+                   !((_inst->isDataPrefetch() || _inst->isInstPrefetch()) &&
+                     !_inst->inHtmTransactionalState())));
     flags.set(Flag::IsAtomic, _inst->isAtomic());
     install();
 }

@@ -75,10 +75,7 @@ resource_id_version_map = {
 }
 
 assert (
-    len(
-        {isa for isa in isa_resource_id_map.values()}
-        - {isa for isa in resource_id_version_map.keys()}
-    )
+    len({*isa_resource_id_map.values()} - {*resource_id_version_map.keys()})
     == 0
 ), (
     "The following resource IDs  are needed by a supported ISA but have no "
@@ -118,6 +115,7 @@ processor = SimpleProcessor(
     cpu_type=CPUTypes.ATOMIC,
     isa=isa,
     num_cores=1,
+    clk_freq="3GHz",
 )
 
 motherboard = SimpleBoard(

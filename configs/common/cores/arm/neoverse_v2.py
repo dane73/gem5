@@ -1,3 +1,15 @@
+# Copyright (c) 2026 Arm Limited
+# All rights reserved
+#
+# The license below extends only to copyright in the software and shall
+# not be construed as granting a license to any other intellectual
+# property including but not limited to intellectual property relating
+# to a hardware implementation of the functionality of the software
+# licensed hereunder.  You may use the software subject to the license
+# terms below provided that you ensure that this notice is replicated
+# unmodified and in its entirety in all distributions of the software,
+# modified or unmodified, in source code or in binary form.
+#
 # Copyright (c) 2025 Technical University of Munich
 # All rights reserved.
 #
@@ -103,7 +115,9 @@ class NeoverseV2_FP(FUDesc):
         OpDesc(opClass="SimdSha256Hash2", opLat=4),
         OpDesc(opClass="SimdShaSigma2", opLat=2),
         OpDesc(opClass="SimdShaSigma3", opLat=2),
+        OpDesc(opClass="SimdSha512Hash", opLat=2),
         OpDesc(opClass="SimdSha3", opLat=2),
+        OpDesc(opClass="SimdSm3", opLat=2),
         OpDesc(opClass="SimdSm4e", opLat=4),
         OpDesc(opClass="SimdCrc", opLat=2),
         OpDesc(opClass="SimdBf16Add", opLat=2),
@@ -319,6 +333,7 @@ class NeoverseV2(ArmO3CPU):
 
     # The Neoverse Scheduler
     # Configured according to https://chipsandcheese.com/p/arms-neoverse-v2-in-awss-graviton-4
+    iqInsertionPolicy = "LeastLoaded"
     instQueues = [
         Neoverse_V2_IQ0(),
         Neoverse_V2_IQ1(),
@@ -369,7 +384,6 @@ class L1I(L1Cache):
     mshrs = 16
     size = "64KiB"
     assoc = 8
-    mshrs = 12
     is_read_only = True
 
 
@@ -378,7 +392,6 @@ class L1D(L1Cache):
     mshrs = 16
     size = "64KiB"
     assoc = 8
-    mshrs = 12
     tag_latency = 4
     data_latency = 4
     response_latency = 4
