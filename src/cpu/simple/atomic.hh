@@ -83,6 +83,10 @@ class AtomicSimpleCPU : public BaseSimpleCPU
      */
     void setNextTemporal(uint64_t nnz_idx, int32_t col);
 
+    bool hasXRange() const { return x_part_init; }
+    Addr getXStart() const { return xAddr; }
+    uint64_t getXSize() const { return xSize; }
+
   protected:
     bool isAddrInTemporal(Addr addr);
     void filterPacket(Addr addr, const RequestPtr &req);

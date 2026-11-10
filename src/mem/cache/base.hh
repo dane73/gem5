@@ -52,6 +52,7 @@
 
 #include "base/addr_range.hh"
 #include "base/compiler.hh"
+#include "base/logging.hh"
 #include "base/statistics.hh"
 #include "base/trace.hh"
 #include "base/types.hh"
@@ -62,6 +63,7 @@
 #include "mem/cache/cache_probe_arg.hh"
 #include "mem/cache/mshr_queue.hh"
 #include "mem/cache/tags/base.hh"
+#include "mem/cache/tags/partitioning_policies/sector_hint.hh"
 #include "mem/cache/write_queue.hh"
 #include "mem/packet.hh"
 #include "mem/packet_queue.hh"
@@ -1067,6 +1069,18 @@ class BaseCache : public ClockedObject
         /** Number of misses for all accesses. */
         statistics::Formula overallMisses;
 
+        /** T-Partition specific demand misses */
+        statistics::Scalar tpMisses;
+        /** NT-Partition specific demand misses */
+        statistics::Scalar ntpMisses;
+
+        /** x misses */
+        statistics::Scalar xMisses;
+        /** x misses in t-Partition */
+        statistics::Scalar xtMisses;
+        /** x misses in nt-Partition */
+        statistics::Scalar xntMisses;
+
         /** Total number of ticks spent waiting for demand misses. */
         statistics::Formula demandMissLatency;
         /** Total number of ticks spent waiting for all misses. */
@@ -1268,10 +1282,34 @@ class BaseCache : public ClockedObject
         return mshrQueue.findMatch(addr, is_secure);
     }
 
+    bool isXAccess(const RequestPtr &req) const;
+
     void incMissCount(PacketPtr pkt)
     {
         assert(pkt->req->requestorId() < system->maxRequestors());
         stats.cmdStats(pkt).misses[pkt->req->requestorId()]++;
+
+        bool isX = isXAccess(pkt->req);
+        if (isX) stats.xMisses++;
+
+        auto ext =
+            pkt->req->getExtension<partitioning_policy::SectorHintExtension>();
+
+        if (pkt->isDemand() && ext) {
+
+
+            auto part_id = ext->getPartitionID();
+            if (part_id == partitioning_policy::TEMPORAL_PARTITION_ID) {
+                stats.tpMisses++;
+                if (isX) stats.xtMisses++;
+            } else if (part_id == partitioning_policy::NON_TEMPORAL_PARTITION_ID){
+                stats.ntpMisses++;
+                if (isX) stats.xntMisses++;
+            } else {
+                panic("Request has no hint extension?");
+            }
+        }
+
         pkt->req->incAccessDepth();
         if (missCount) {
             --missCount;

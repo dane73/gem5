@@ -47,6 +47,9 @@
 
 #include "base/compiler.hh"
 #include "base/logging.hh"
+#include "base/stats/group.hh"
+#include "base/stats/units.hh"
+#include "cpu/thread_context.hh"
 #include "debug/Cache.hh"
 #include "debug/CacheComp.hh"
 #include "debug/CachePort.hh"
@@ -61,9 +64,11 @@
 #include "mem/cache/tags/compressed_tags.hh"
 #include "mem/cache/tags/partitioning_policies/partition_manager.hh"
 #include "mem/cache/tags/super_blk.hh"
+#include "params/BaseAtomicSimpleCPU.hh"
 #include "params/BaseCache.hh"
 #include "params/WriteAllocator.hh"
 #include "sim/cur_tick.hh"
+#include "cpu/simple/atomic.hh"
 
 namespace gem5
 {
@@ -258,6 +263,32 @@ BaseCache::allocateWriteBuffer(PacketPtr pkt, Tick time)
 
     // schedule the send
     schedMemSideSendEvent(time);
+}
+
+bool
+BaseCache::isXAccess(const RequestPtr &req) const {
+    if (!req->hasContextId() || !req->hasVaddr()) {
+        panic("ContextID and virtual address expected.");
+    }
+
+    auto cid = req->contextId();
+    if (cid < 0 || cid >= system->threads.size()) {
+        panic("Error with context and threads.");
+    }
+
+    auto *tc = system->threads[cid];
+    panic_if(!tc, "Thread not found");
+
+    auto *cpu = dynamic_cast<AtomicSimpleCPU *>(tc->getCpuPtr());
+    panic_if(!cpu, "no cpu found");
+
+    if (!cpu->hasXRange()) return false;
+
+    const Addr start = cpu->getXStart();
+    const Addr addr = req->getVaddr();
+    const Addr xSize = cpu->getXSize();
+
+    return addr >= start && addr - start < xSize;
 }
 
 void
@@ -2274,6 +2305,16 @@ BaseCache::CacheStats::CacheStats(BaseCache &c)
              "number of demand (read+write) misses"),
     ADD_STAT(overallMisses, statistics::units::Count::get(),
              "number of overall misses"),
+    ADD_STAT(tpMisses, statistics::units::Count::get(),
+             "number of (demand) misses in the temporal partition"),
+    ADD_STAT(ntpMisses, statistics::units::Count::get(),
+             "number of (demand) misses in the non-temporal partition"),
+    ADD_STAT(xMisses, statistics::units::Count::get(),
+            "number of x Misses"),
+    ADD_STAT(xtMisses, statistics::units::Count::get(),
+            "number of x misses in t partition"),
+    ADD_STAT(xntMisses, statistics::units::Count::get(),
+            "number of x misses in nt partition"),
     ADD_STAT(demandMissLatency, statistics::units::Tick::get(),
              "number of demand (read+write) miss ticks"),
     ADD_STAT(overallMissLatency, statistics::units::Tick::get(),
